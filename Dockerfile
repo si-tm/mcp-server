@@ -15,5 +15,11 @@ ENV AWS_REGION=ap-northeast-1
 
 EXPOSE 9000
 
-# テスト用HTTPラッパーを起動（Claude Desktop用にはserver_fastmcp.pyを直接使用）
+# -----------------------------
+# Health Check
+# -----------------------------
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -fs http://localhost:9000/health || exit 1
+
+# テスト用HTTPラッパーを起動
 CMD ["python", "test_wrapper.py"]
