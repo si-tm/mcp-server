@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MCP Server using FastMCP
-CPU使用率とAWS情報を提供する標準MCP準拠サーバー
+MCP Tools - 共通ツールロジック
+Claude Desktop / Bedrock 両方で使用
 """
 
 import os
@@ -14,7 +14,7 @@ from mcp.server.fastmcp import FastMCP
 # FastMCPサーバーを初期化
 mcp = FastMCP("System & AWS Monitor")
 
-# AWS リージョンを環境変数から取得（デフォルト: ap-northeast-1）
+# AWS リージョンを環境変数から取得
 AWS_REGION = os.getenv('AWS_REGION', 'ap-northeast-1')
 
 # AWS クライアント（IAMロールから認証情報を取得）
@@ -29,6 +29,10 @@ except Exception as e:
     s3_client = None
     rds_client = None
 
+
+# ========================================
+# システム情報ツール
+# ========================================
 
 @mcp.tool()
 def get_cpu_usage() -> dict[str, Any]:
@@ -82,6 +86,10 @@ def get_system_summary() -> dict[str, Any]:
         "disk": get_disk_usage()
     }
 
+
+# ========================================
+# AWS情報ツール
+# ========================================
 
 @mcp.tool()
 def get_ec2_instances() -> dict[str, Any]:
@@ -175,6 +183,10 @@ def get_aws_summary() -> dict[str, Any]:
     }
 
 
+# ========================================
+# プロンプト
+# ========================================
+
 @mcp.prompt()
 def system_status_prompt() -> str:
     """システムステータス確認用プロンプト"""
@@ -200,9 +212,3 @@ def aws_inventory_prompt() -> str:
 
 各リソースの数と状態をまとめて報告してください。
 """
-
-
-# if __name__ == "__main__":
-#     # stdio モードで起動（標準入出力経由）
-#     # Claude DesktopなどのMCPクライアントから使用
-#     mcp.run(host="0.0.0.0", port=9000, stdio=True)

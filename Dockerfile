@@ -15,11 +15,6 @@ ENV AWS_REGION=ap-northeast-1
 
 EXPOSE 9000
 
-# -----------------------------
-# Health Check
-# -----------------------------
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD curl -fs http://localhost:9000/health || exit 1
-
-# テスト用HTTPラッパーを起動
-CMD ["python", "test_wrapper.py"]
+# HTTPモードで起動（ALB/ECS用）
+# Claude Desktop用には server_stdio.py を直接実行
+CMD ["python", "server_http.py"]

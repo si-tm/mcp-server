@@ -1,13 +1,39 @@
 # mcp-server
 
-**FastMCP (Model Context Protocol)** を使用したシステムモニタリング＆AWS情報取得サーバー
+FastMCPを使用したシステムモニタリング＆AWS情報取得サーバー
 
-## 特徴
+## アーキテクチャ
 
-- ✅ **MCP標準準拠** - Anthropicの公式Model Context Protocolに準拠
-- ✅ **FastMCP使用** - 簡潔で読みやすいコード
-- ✅ **SSEサポート** - Server-Sent Eventsによるリアルタイム通信
-- ✅ **IAMロール対応** - EC2/ECS環境で自動的にAWS認証
+```
+共通ツールロジック（tools.py）
+         ↓
+    ┌────┴────┐
+    │         │
+stdio モード  HTTPモード
+    │         │
+Claude Desktop  ALB/ECS
+```
+
+### 役割分担
+
+| 用途 | ファイル | トランスポート | 特徴 |
+|------|---------|-------------|------|
+| **Claude Desktop** | `server_stdio.py` | stdio | ローカル実行・ALB不要 |
+| **Bedrock/ALB/ECS** | `server_http.py` | HTTP | healthcheck対応 |
+| **ツールロジック** | `tools.py` | - | 共通・再利用 |
+
+## ファイル構成
+
+```
+mcp-server/
+├── src/
+│   ├── tools.py          # ツールロジック（共通）
+│   ├── server_stdio.py   # Claude Desktop用
+│   └── server_http.py    # Bedrock/ALB/ECS用
+├── Dockerfile
+├── requirements.txt
+└── README.md
+```
 
 ## 機能
 
@@ -15,111 +41,25 @@
 - `get_cpu_usage` - CPU使用率
 - `get_memory_usage` - メモリ使用率
 - `get_disk_usage` - ディスク使用率
-- `get_system_summary` - システム全体のサマリー
+- `get_system_summary` - システムサマリー
 
 ### AWS情報ツール
 - `get_ec2_instances` - EC2インスタンス一覧
 - `get_s3_buckets` - S3バケット一覧
 - `get_rds_instances` - RDSインスタンス一覧
-- `get_aws_summary` - AWS リソース全体のサマリー
+- `get_aws_summary` - AWSサマリー
 
 ### プロンプト
 - `system_status_prompt` - システムステータス確認用
-- `aws_inventory_prompt` - AWSリソースインベントリ作成用
+- `aws_inventory_prompt` - AWSリソースインベントリ確認用
 
-## セットアップ
+## 使い方
 
-### ローカル開発環境
+### 1. Claude Desktop用（stdio）
 
-```bash
-# 依存関係をインストール
-pip install -r requirements.txt
+#### 設定ファイルに追加
 
-# サーバーを起動
-cd src
-python server_fastmcp.py
-```
-
-サーバーは `http://localhost:9000` で起動します。
-
-### Docker環境
-
-```bash
-# イメージをビルド
-docker build -t mcp-server .
-
-# コンテナを起動
-docker run -p 9000:9000 mcp-server
-```
-
-### bedrock-uiと統合
-
-```bash
-cd /Users/hyakuzukamaya/Desktop/bedrock-ui
-
-# 全サービスを起動
-docker-compose up -d
-
-# MCPサーバーのログを確認
-docker-compose logs -f mcp-server
-```
-
-## FastMCPの利点
-
-### 1. シンプルなツール定義
-
-```python
-from mcp.server.fastmcp import FastMCP
-
-mcp = FastMCP("My Server")
-
-@mcp.tool()
-def get_cpu_usage() -> dict:
-    """CPU使用率を取得"""
-    return {"usage": 50.5}
-```
-
-### 2. 自動的な型検証
-
-関数の型ヒントから自動的にスキーマを生成
-
-### 3. プロンプトサポート
-
-```python
-@mcp.prompt()
-def system_check() -> str:
-    """システムチェック用のプロンプト"""
-    return "システムの状態を確認してください"
-```
-
-### 4. 複数のトランスポート対応
-
-- **SSE (Server-Sent Events)** - HTTP経由
-- **stdio** - 標準入出力経由
-
-## MCPエンドポイント
-
-### ポート: 9000
-
-FastMCPは標準的なMCPプロトコルを使用します：
-
-#### SSE エンドポイント
-```
-GET /sse
-```
-
-#### ツール一覧取得
-MCPクライアント経由で以下が可能：
-- ツール一覧の取得
-- ツールの実行
-- プロンプトの取得
-
-## Claude Desktop との統合
-
-Claude Desktopの設定ファイルに追加：
-
-### macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-### Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ```json
 {
@@ -127,7 +67,7 @@ Claude Desktopの設定ファイルに追加：
     "system-monitor": {
       "command": "python",
       "args": [
-        "/Users/hyakuzukamaya/Desktop/mcp-server/src/server_fastmcp.py"
+        "/Users/hyakuzukamaya/Desktop/mcp-server/src/server_stdio.py"
       ],
       "env": {
         "AWS_REGION": "ap-northeast-1"
@@ -137,80 +77,123 @@ Claude Desktopの設定ファイルに追加：
 }
 ```
 
-これで、Claude Desktopから直接システム情報やAWS情報を取得できます！
-
-## 使用例
-
-### ツール実行
-
-MCPクライアント（Claude Desktopなど）から：
-
-```
-User: CPU使用率を教えて
-
-Claude: get_cpu_usage ツールを使用します...
-→ CPU使用率: 45.2%
-→ CPUコア数: 8
-→ 周波数: 2400 MHz
-```
-
-### プロンプト使用
-
-```
-User: システムの状態を確認して
-
-Claude: system_status_prompt を使用して確認します...
-→ CPU使用率: 45.2% - 正常
-→ メモリ使用率: 60.5% - 正常
-→ ディスク使用率: 75.3% - 注意が必要
-```
-
-### AWS情報取得
-
-```
-User: EC2インスタンスを教えて
-
-Claude: get_ec2_instances ツールを使用します...
-→ 稼働中: 2インスタンス
-  - i-1234567890 (t3.medium) - 10.0.1.10
-  - i-0987654321 (t3.large) - 10.0.1.20
-```
-
-## bedrock-ui フロントエンドからの利用
-
-### MCPクライアントライブラリを使用
+#### 起動確認
 
 ```bash
-npm install @modelcontextprotocol/sdk
+cd /Users/hyakuzukamaya/Desktop/mcp-server/src
+python server_stdio.py
 ```
 
-```javascript
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+Claude Desktopを再起動して、「CPU使用率を教えて」と質問すると、ツールを使って情報を取得します。
 
-// MCPクライアントを作成
-const transport = new SSEClientTransport(
-  new URL('http://localhost:9000/sse')
-);
-const client = new Client({
-  name: 'bedrock-ui',
-  version: '1.0.0'
-}, {
-  capabilities: {}
-});
+### 2. Bedrock/ALB/ECS用（HTTP）
 
-await client.connect(transport);
+#### Docker環境
 
-// ツール一覧を取得
-const tools = await client.listTools();
-console.log('Available tools:', tools);
+```bash
+# イメージをビルド
+docker build -t mcp-server .
 
-// ツールを実行
-const result = await client.callTool({
-  name: 'get_cpu_usage',
-  arguments: {}
-});
-console.log('CPU Usage:', result);
+# 起動
+docker run -p 9000:9000 -e AWS_REGION=ap-northeast-1 mcp-server
+```
+
+#### bedrock-uiと統合
+
+```bash
+cd /Users/hyakuzukamaya/Desktop/bedrock-ui
+
+# docker-compose.ymlに既に設定済み
+docker-compose up -d mcp-server
+
+# ログを確認
+docker-compose logs -f mcp-server
+```
+
+## APIエンドポイント（HTTPモード）
+
+### 基本情報
+```bash
+# サーバー情報
+GET /
+
+# ヘルスチェック（ALB用）
+GET /health
+
+# ツール一覧
+GET /tools
+```
+
+### システム情報
+```bash
+# CPU使用率
+GET /cpu
+
+# メモリ使用率
+GET /memory
+
+# ディスク使用率
+GET /disk
+
+# システムサマリー
+GET /system
+```
+
+### AWS情報
+```bash
+# EC2インスタンス
+GET /aws/ec2
+
+# S3バケット
+GET /aws/s3
+
+# RDSインスタンス
+GET /aws/rds
+
+# AWSサマリー
+GET /aws/summary
+```
+
+### 汎用ツール実行
+```bash
+# 任意のツールを実行
+GET /call/{tool_name}
+
+# 例
+GET /call/get_cpu_usage
+```
+
+## テスト
+
+### ローカルテスト
+
+```bash
+cd /Users/hyakuzukamaya/Desktop/mcp-server/src
+
+# stdioモードテスト（Claude Desktop用）
+python server_stdio.py
+
+# HTTPモードテスト（ALB/ECS用）
+python server_http.py
+```
+
+別のターミナルで：
+```bash
+# ヘルスチェック
+curl http://localhost:9000/health
+
+# CPU使用率
+curl http://localhost:9000/cpu
+
+# ツール一覧
+curl http://localhost:9000/tools
+```
+
+### MCP Inspector（GUIテスト）
+
+```bash
+# Claude Desktop用サーバーをテスト
+npx @modelcontextprotocol/inspector python /Users/hyakuzukamaya/Desktop/mcp-server/src/server_stdio.py
 ```
 
 ## 必要なIAM権限
@@ -234,52 +217,74 @@ AWS情報を取得するには、以下の権限が必要：
 }
 ```
 
-## トラブルシューティング
+## デプロイ
 
-### MCPサーバーが起動しない
+### EC2へのデプロイ
 
 ```bash
-# 依存関係を再インストール
-pip install -r requirements.txt --upgrade
+# IAMロールをアタッチ
+aws ec2 associate-iam-instance-profile \
+  --instance-id i-xxxxx \
+  --iam-instance-profile Name=mcp-server-profile
 
-# ログを確認
-docker-compose logs mcp-server
+# Docker Composeで起動
+cd /path/to/bedrock-ui
+docker-compose up -d mcp-server
 ```
+
+### ECSへのデプロイ
+
+```bash
+# ECRにプッシュ
+docker build -t mcp-server .
+docker tag mcp-server:latest ACCOUNT.dkr.ecr.REGION.amazonaws.com/mcp-server:latest
+docker push ACCOUNT.dkr.ecr.REGION.amazonaws.com/mcp-server:latest
+
+# タスク定義にtaskRoleArnを設定
+# ECSサービスを起動
+```
+
+## トラブルシューティング
 
 ### AWS認証エラー
 
 **ローカル開発:**
 ```bash
 aws configure
+export AWS_REGION=ap-northeast-1
 ```
 
 **EC2/ECS:**
-- IAMロールに必要な権限があるか確認
-
-### ポート9000が使用中
-
 ```bash
-# ポートを変更
-python server_fastmcp.py --port 9001
+# IAMロールを確認
+curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
 ```
 
-## FastMCP vs 通常のHTTP API
+### ツールが見つからない
 
-| 機能 | FastMCP | HTTP API |
-|------|---------|----------|
-| MCP標準準拠 | ✅ | ❌ |
-| Claude統合 | ✅ 簡単 | ❌ 困難 |
-| 型安全性 | ✅ | △ |
-| プロンプトサポート | ✅ | ❌ |
-| コードの簡潔さ | ✅ | △ |
-| SSEサポート | ✅ | 要実装 |
+```bash
+# Python パスを確認
+export PYTHONPATH=/Users/hyakuzukamaya/Desktop/mcp-server/src:$PYTHONPATH
 
-## 参考リンク
+# tools.pyがインポートできるか確認
+python -c "from tools import mcp; print(len(mcp._tools))"
+```
 
-- [FastMCP Documentation](https://github.com/jlowin/fastmcp)
-- [Model Context Protocol Specification](https://spec.modelcontextprotocol.io/)
-- [Anthropic MCP Documentation](https://docs.anthropic.com/claude/docs/model-context-protocol)
+## まとめ
 
-## ライセンス
+### 特徴
 
-MIT
+✅ **ツールロジックは1か所** - `tools.py`に集約  
+✅ **起動方式だけ分ける** - stdio / HTTP  
+✅ **Claude Desktop対応** - `server_stdio.py`  
+✅ **ALB/ECS対応** - `server_http.py` + healthcheck  
+✅ **共通・再利用** - 同じツールを両方で使用
+
+### 使い分け
+
+| 環境 | 使用ファイル | 用途 |
+|------|------------|------|
+| **ローカル（Claude Desktop）** | `server_stdio.py` | 開発・テスト |
+| **本番（ALB/ECS）** | `server_http.py` | システム監視 |
+
+これで、ツールロジックを重複なく管理できます！🎉
