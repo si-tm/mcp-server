@@ -205,4 +205,4 @@ def aws_inventory_prompt() -> str:
 if __name__ == "__main__":
     # stdio モードで起動（標準入出力経由）
     # Claude DesktopなどのMCPクライアントから使用
-    mcp.run()
+    mcp.run(host="0.0.0.0", port=9000, stdio=True)
